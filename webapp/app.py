@@ -21,9 +21,8 @@ sys.path.append(project_root)
 
 # Import project modules
 from src.data.loader import load_data
-from src.features.engineering import create_features, complete_data_transformation
+from src.features.engineering import complete_data_transformation
 from src.models.train_evaluate import train_random_forest, evaluate_model, feature_importance
-from src.visualization.visualize import plot_predictions_vs_actual
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -265,4 +264,4 @@ def predict():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='127.0.0.1', port=5000)
