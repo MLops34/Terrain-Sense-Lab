@@ -263,5 +263,71 @@ def predict():
         })
 
 
+@app.route('/update_plots', methods=['POST'])
+def update_plots():
+    """Generate updated plots with new prediction included."""
+    try:
+        data = request.get_json()
+        new_prediction = float(data.get('prediction', 0))
+        
+        # Load model and features
+        model, saved_features = load_trained_model()
+        
+        # Load data for visualization
+        data_df = load_data(DATA_PATH)
+        test_size = int(0.2 * len(data_df))
+        test_data = data_df.iloc[:test_size]
+        
+        # Transform and align test data
+        X_test, y_test = transform_with_saved_features(test_data, saved_features)
+        
+        # Make predictions on test data
+        predictions = model.predict(X_test)
+        
+        # Generate updated scatter plot with new prediction highlighted
+        plt.figure(figsize=(8, 8))
+        plt.scatter(y_test, predictions, alpha=0.5, label='Test Predictions', color='#5E72E4')
+        
+        # Add new prediction point (we'll use a dummy actual value for visualization)
+        # Use the mean of test actuals as reference
+        reference_actual = float(y_test.mean())
+        plt.scatter([reference_actual], [new_prediction], 
+                   s=200, color='#F97316', marker='*', 
+                   label='Your Prediction', zorder=5, edgecolors='black', linewidths=2)
+        
+        # Add diagonal line
+        min_val = min(y_test.min(), predictions.min(), new_prediction)
+        max_val = max(y_test.max(), predictions.max(), new_prediction)
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.7, label='Perfect Prediction')
+        
+        plt.xlabel('Actual House Prices', fontsize=12)
+        plt.ylabel('Predicted House Prices', fontsize=12)
+        plt.title('Actual vs Predicted House Prices (Updated)', fontsize=14, fontweight='bold')
+        plt.legend(loc='upper left')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        updated_plot = fig_to_base64(plt.gcf())
+        plt.close()
+        
+        # Generate updated feature importance plot (same as before, but fresh)
+        feature_plot = generate_feature_importance_plot(model, saved_features)
+        
+        return jsonify({
+            'success': True,
+            'predictions_plot': updated_plot,
+            'feature_plot': feature_plot
+        })
+    
+    except Exception as e:
+        import traceback
+        traceback_str = traceback.format_exc()
+        print(traceback_str)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='127.0.0.1', port=5000)

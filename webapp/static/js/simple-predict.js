@@ -53,7 +53,13 @@ function animatePredictionResult(formattedPrice) {
     }, 2000);
 }
 
+// Store prediction globally for plot updates
+window.currentPredictionValue = null;
+
 function updateProofVisualization(rawPrediction) {
+    // Store prediction globally
+    window.currentPredictionValue = rawPrediction;
+    
     const proofCard = document.getElementById('prediction-proof');
     if (!proofCard || rawPrediction === undefined || rawPrediction === null) return;
 
@@ -97,6 +103,63 @@ function updateProofVisualization(rawPrediction) {
     proofCard.classList.remove('d-none');
 }
 
+// Function to update plots automatically after prediction
+function updatePlotsRealTime(predictionValue) {
+    if (!predictionValue || predictionValue <= 0) return;
+    
+    const featureImg = document.getElementById('feature-importance-img');
+    const predictionsImg = document.getElementById('predictions-plot-img');
+    const highlightText = document.getElementById('prediction-highlight-text');
+    
+    // Add updating class to images
+    if (featureImg) featureImg.classList.add('plot-updating');
+    if (predictionsImg) predictionsImg.classList.add('plot-updating');
+    
+    // Fetch updated plots
+    fetch('/update_plots', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            prediction: predictionValue
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update feature importance plot
+            if (featureImg && data.feature_plot) {
+                featureImg.src = 'data:image/png;base64,' + data.feature_plot;
+                featureImg.classList.remove('plot-updating');
+                featureImg.classList.add('plot-updated');
+                setTimeout(() => featureImg.classList.remove('plot-updated'), 500);
+            }
+            
+            // Update predictions plot
+            if (predictionsImg && data.predictions_plot) {
+                predictionsImg.src = 'data:image/png;base64,' + data.predictions_plot;
+                predictionsImg.classList.remove('plot-updating');
+                predictionsImg.classList.add('plot-updated');
+                setTimeout(() => predictionsImg.classList.remove('plot-updated'), 500);
+            }
+            
+            // Show highlight text
+            if (highlightText) {
+                highlightText.classList.remove('d-none');
+            }
+        } else {
+            console.error('Error updating plots:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error updating plots:', error);
+        // Remove updating class on error
+        if (featureImg) featureImg.classList.remove('plot-updating');
+        if (predictionsImg) predictionsImg.classList.remove('plot-updating');
+    });
+}
+
 // Add to form submission event
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('prediction-form');
@@ -127,6 +190,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     animatePredictionResult(data.formatted_prediction);
                     updateProofVisualization(data.prediction);
+                    // Automatically update plots in real-time
+                    updatePlotsRealTime(data.prediction);
                 } else {
                     const resultElement = document.getElementById('prediction-result');
                     resultElement.classList.remove('d-none');

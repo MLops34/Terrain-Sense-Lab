@@ -288,7 +288,7 @@
                         <h2 class="display-3 fw-bold" id="price-value">$0</h2>
                         <div class="mt-3 pt-2">
                             <p class="text-muted">Rooted in your sliders & categorical vibes.</p>
-                            <button type="button" class="btn btn-outline-primary mt-2" onclick="window.location.href='#visualizations'">
+                            <button type="button" class="btn btn-outline-primary mt-2" id="inspect-proof-btn" onclick="updateVisualizations()">
                                 <i class="fas fa-chart-line me-2"></i>Inspect the proof
                             </button>
                         </div>
@@ -313,7 +313,7 @@
                         <div class="proof-bar">
                             <div class="proof-bar-track"></div>
                             <div class="proof-marker" id="proof-marker"></div>
-                            <div class="proof-notch" style="left: {{ median_ratio|round(2) }}%;" title="Dataset median"></div>
+                            <div class="proof-notch" id="proof-notch-median" data-median-ratio="{{ median_ratio|round(2) }}" title="Dataset median"></div>
                         </div>
                         <div class="d-flex justify-content-between text-muted small mt-2 flex-wrap gap-2">
                             <span>Min ${{ price_stats.min|round(0)|int }}</span>
@@ -394,7 +394,7 @@
                         <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Feature Importance</h5>
                     </div>
                     <div class="card-body text-center">
-                        <img src="data:image/png;base64,{{ feature_plot }}" alt="Feature Importance" class="img-fluid" data-tooltip="Click to enlarge">
+                        <img id="feature-importance-img" src="data:image/png;base64,{{ feature_plot }}" alt="Feature Importance" class="img-fluid" data-tooltip="Click to enlarge">
                         <p class="mt-3">The more saturated the bar, the stronger the signal shaping your quote.</p>
                         <button class="btn btn-sm btn-outline-primary mt-2" data-bs-toggle="tooltip" title="Learn more about feature importance">
                             <i class="fas fa-info-circle me-1"></i>Learn More
@@ -410,8 +410,8 @@
                         <h5 class="mb-0"><i class="fas fa-bullseye me-2"></i>Prediction Accuracy</h5>
                     </div>
                     <div class="card-body text-center">
-                        <img src="data:image/png;base64,{{ predictions_plot }}" alt="Prediction Accuracy" class="img-fluid" data-tooltip="Click to enlarge">
-                        <p class="mt-3">Dots hugging the diagonal mean your slider art matches what happened in census reality.</p>
+                        <img id="predictions-plot-img" src="data:image/png;base64,{{ predictions_plot }}" alt="Prediction Accuracy" class="img-fluid" data-tooltip="Click to enlarge">
+                        <p class="mt-3">Dots hugging the diagonal mean your slider art matches what happened in census reality. <span id="prediction-highlight-text" class="text-warning fw-bold d-none">⭐ Your prediction is highlighted!</span></p>
                         <div class="mt-3 d-flex justify-content-center">
                             <span class="badge bg-success me-2 p-2">RMSE: {{ "%.2f"|format(rmse) }}</span>
                             <span class="badge bg-primary p-2">R²: {{ "%.2f"|format(r2) }}</span>
@@ -426,6 +426,9 @@
 
 {% block extra_js %}
 <script>
+    // Store current prediction value globally
+    let currentPrediction = null;
+    
     // Update slider value displays
     document.querySelectorAll('input[type="range"]').forEach(function(slider) {
         slider.addEventListener('input', function() {
@@ -444,8 +447,113 @@
             .btn-pulse {
                 animation: pulse 1.5s infinite;
             }
+            .plot-updating {
+                opacity: 0.6;
+                transition: opacity 0.3s;
+            }
+            .plot-updated {
+                animation: fadeIn 0.5s ease-in;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+            }
         </style>
     `);
+    
+    // Function to update visualizations with new prediction (available globally)
+    window.updateVisualizations = function() {
+        // Get prediction from global variable or currentPrediction
+        const predictionValue = window.currentPredictionValue || currentPrediction;
+        
+        console.log('updateVisualizations called, predictionValue:', predictionValue);
+        
+        if (!predictionValue) {
+            // If no prediction made yet, just scroll to visualizations
+            window.location.href = '#visualizations';
+            return;
+        }
+        
+        const inspectBtn = document.getElementById('inspect-proof-btn');
+        const featureImg = document.getElementById('feature-importance-img');
+        const predictionsImg = document.getElementById('predictions-plot-img');
+        const highlightText = document.getElementById('prediction-highlight-text');
+        
+        // Update button state
+        if (inspectBtn) {
+            inspectBtn.disabled = true;
+            inspectBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Updating plots...';
+        }
+        
+        // Add updating class to images
+        if (featureImg) featureImg.classList.add('plot-updating');
+        if (predictionsImg) predictionsImg.classList.add('plot-updating');
+        
+        // Scroll to visualizations
+        window.location.href = '#visualizations';
+        
+        // Fetch updated plots
+        fetch('/update_plots', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                prediction: predictionValue
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update feature importance plot
+                if (featureImg && data.feature_plot) {
+                    featureImg.src = 'data:image/png;base64,' + data.feature_plot;
+                    featureImg.classList.remove('plot-updating');
+                    featureImg.classList.add('plot-updated');
+                    setTimeout(() => featureImg.classList.remove('plot-updated'), 500);
+                }
+                
+                // Update predictions plot
+                if (predictionsImg && data.predictions_plot) {
+                    predictionsImg.src = 'data:image/png;base64,' + data.predictions_plot;
+                    predictionsImg.classList.remove('plot-updating');
+                    predictionsImg.classList.add('plot-updated');
+                    setTimeout(() => predictionsImg.classList.remove('plot-updated'), 500);
+                }
+                
+                // Show highlight text
+                if (highlightText) {
+                    highlightText.classList.remove('d-none');
+                }
+            } else {
+                console.error('Error updating plots:', data.error);
+                alert('Error updating plots: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating plots. Please try again.');
+        })
+        .finally(() => {
+            // Reset button
+            if (inspectBtn) {
+                inspectBtn.disabled = false;
+                inspectBtn.innerHTML = '<i class="fas fa-chart-line me-2"></i>Inspect the proof';
+            }
+        });
+    }
+    
+    // Modify the prediction handler to store the prediction value
+    document.addEventListener('DOMContentLoaded', function() {
+        // Set median notch position from data attribute
+        const medianNotch = document.getElementById('proof-notch-median');
+        if (medianNotch && medianNotch.dataset.medianRatio) {
+            medianNotch.style.left = medianNotch.dataset.medianRatio + '%';
+        }
+        
+        // Make updateVisualizations available globally
+        window.updateVisualizations = updateVisualizations;
+    });
     
     // Important: We're using simple-predict.js instead of the inline script
     // The form submission handler is now in that file
