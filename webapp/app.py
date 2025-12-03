@@ -30,38 +30,47 @@ app = Flask(__name__)
 # Global variables
 MODEL_PATH = os.path.join(project_root, 'output', 'rf_model.pkl')
 DATA_PATH = os.path.join(project_root, 'housing.csv')
+# We train on log-transformed prices for more stable, realistic predictions
+USE_LOG_TARGET = True
 
 
 def train_and_save_model_if_needed():
-    """Train and save the model if it doesn't exist."""
+    """
+    Train and save the model if it doesn't exist.
+    This keeps startup / page load fast after the first successful training.
+    """
     os.makedirs(os.path.join(project_root, 'output'), exist_ok=True)
-    
-    if not os.path.exists(MODEL_PATH):
-        print("Training new model...")
-        # Load and preprocess data
-        data = load_data(DATA_PATH)
-        # Split into train/test
-        train_size = int(0.8 * len(data))
-        train_data = data.iloc[:train_size]
-        test_data = data.iloc[train_size:]
-        
-        # Transform data
-        X_train, y_train, features = complete_data_transformation(train_data)
-        
-        # Train model
-        model = train_random_forest(X_train, y_train)
-        
-        # Save model, features, and transformation info
-        joblib.dump(model, MODEL_PATH)
-        joblib.dump(features, os.path.join(project_root, 'output', 'features.pkl'))
-        
-        # Also save the unique categories for ocean_proximity to ensure consistent encoding
-        ocean_prox_values = data['ocean_proximity'].unique().tolist()
-        joblib.dump(ocean_prox_values, os.path.join(project_root, 'output', 'ocean_proximity_categories.pkl'))
-        
-        print("Model trained and saved.")
-    else:
-        print("Model already exists.")
+
+    if os.path.exists(MODEL_PATH):
+        print("Model already exists – skipping training.")
+        return
+
+    print("Training model (first-run)...")
+    # Load and preprocess data
+    data = load_data(DATA_PATH)
+    # Split into train/test
+    train_size = int(0.8 * len(data))
+    train_data = data.iloc[:train_size]
+    test_data = data.iloc[train_size:]
+
+    # Transform data
+    X_train, y_train, features = complete_data_transformation(train_data)
+    # Apply log1p transform to target for more stable training
+    if USE_LOG_TARGET and y_train is not None:
+        y_train = np.log1p(y_train)
+
+    # Train model
+    model = train_random_forest(X_train, y_train)
+
+    # Save model, features, and transformation info
+    joblib.dump(model, MODEL_PATH)
+    joblib.dump(features, os.path.join(project_root, 'output', 'features.pkl'))
+
+    # Also save the unique categories for ocean_proximity to ensure consistent encoding
+    ocean_prox_values = data['ocean_proximity'].unique().tolist()
+    joblib.dump(ocean_prox_values, os.path.join(project_root, 'output', 'ocean_proximity_categories.pkl'))
+
+    print("Model trained and saved.")
 
 
 def load_trained_model():
@@ -164,9 +173,12 @@ def home():
     # Transform and align test data
     X_test, y_test = transform_with_saved_features(test_data, saved_features)
     
-    # Make predictions on test data
-    predictions = model.predict(X_test)
-    
+    # Make predictions on test data (invert log-transform if used)
+    raw_preds = model.predict(X_test)
+    if USE_LOG_TARGET:
+        predictions = np.expm1(raw_preds)
+    else:
+        predictions = raw_preds
     # Generate predictions plot
     predictions_plot = generate_prediction_scatter_plot(y_test, predictions)
     
@@ -175,16 +187,17 @@ def home():
     rmse = np.sqrt(mean_squared_error(y_test, predictions))
     r2 = r2_score(y_test, predictions)
     
-    # Get feature ranges for the form
+    # Get feature ranges for the form (use central percentiles to avoid extreme, unrealistic inputs)
     feature_ranges = {}
     numeric_columns = data.select_dtypes(include=[np.number]).columns
     for col in numeric_columns:
         if col != 'median_house_value':
+            col_series = data[col]
             feature_ranges[col] = {
-                'min': data[col].min(),
-                'max': data[col].max(),
-                'mean': data[col].mean(),
-                'default': data[col].median()
+                'min': float(col_series.quantile(0.05)),
+                'max': float(col_series.quantile(0.95)),
+                'mean': float(col_series.mean()),
+                'default': float(col_series.median())
             }
     
     # Get ocean proximity categories - use saved categories to ensure consistency
@@ -241,8 +254,12 @@ def predict():
         transformed_inputs, _ = transform_with_saved_features(combined, saved_features)
         X_input = transformed_inputs[-1:].reshape(1, -1)
         
-        # Make prediction
-        prediction = model.predict(X_input)[0]
+        # Make prediction (invert log-transform if used)
+        raw_pred = model.predict(X_input)[0]
+        if USE_LOG_TARGET:
+            prediction = np.expm1(raw_pred)
+        else:
+            prediction = raw_pred
         app.logger.debug("Predict request payload: %s", features_dict)
         app.logger.debug("Predict result: %s", prediction)
         
@@ -281,8 +298,12 @@ def update_plots():
         # Transform and align test data
         X_test, y_test = transform_with_saved_features(test_data, saved_features)
         
-        # Make predictions on test data
-        predictions = model.predict(X_test)
+        # Make predictions on test data (invert log-transform if used)
+        raw_preds = model.predict(X_test)
+        if USE_LOG_TARGET:
+            predictions = np.expm1(raw_preds)
+        else:
+            predictions = raw_preds
         
         # Generate updated scatter plot with new prediction highlighted
         plt.figure(figsize=(8, 8))

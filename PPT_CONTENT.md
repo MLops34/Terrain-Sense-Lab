@@ -20,7 +20,7 @@ Experimental Housing Intelligence Platform | California Real Estate Valuation
 **Visual Suggestions:**
 - California map background (subtle)
 - Modern gradient overlay
-- Project bra nding/logo
+- Project branding/logo
 
 ---
 

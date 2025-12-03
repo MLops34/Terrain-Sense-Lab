@@ -580,3 +580,95 @@ The application successfully generates house price predictions via Random Forest
 ---
 
 *This document provides a detailed examination of the Terrain Sense Lab project. Implementation specifics can be found in source code comments and function documentation.*
+
+
+Here’s a tight, ML‑only way to explain what you did and why.
+
+### 1. Feature engineering & preprocessing
+
+- **Feature engineering**  
+  - I created ratio features like **bedrooms_per_household**, **population_per_household**, and **rooms_per_household** to better capture density and living conditions than raw counts.
+- **Numeric preprocessing**  
+  - I used **median imputation** for missing numeric values and **StandardScaler** to normalize features before training, which stabilizes tree splits and distance-based behavior.
+- **Categorical encoding**  
+  - I used **one‑hot encoding** for `ocean_proximity`, and I saved the category set so inference uses the exact same encoding as training.
+
+### 2. Target transformation (key improvement)
+
+- **Problem**: House prices are **right‑skewed** with a long tail, so training directly on raw prices can give unstable predictions and overemphasize extreme values.
+- **Solution**: I trained the model on **log‑transformed prices**:
+  - During training: \( y_{\text{train}}' = \log(1 + \text{price}) \)
+  - At prediction time: I invert it with \( \hat{y} = \exp(y_{\text{pred}}') - 1 \)
+- **Benefit**: This makes the loss landscape smoother, reduces the impact of outliers, and usually yields **more realistic, better‑calibrated predictions**, especially at higher prices.
+
+### 3. Robust, realistic inputs for users
+
+- **Problem**: Letting users pick extreme min/max values leads to scenarios **far outside the training distribution**, which produce noisy or unrealistic predictions.
+- **Solution**: I constrained the UI input ranges to the **5th–95th percentiles** of each feature in the training data (instead of absolute min/max).
+- **Benefit**: Users mostly explore **plausible combinations** the model has actually seen, so predictions are more stable and “user‑tested” prices feel sensible.
+
+### 4. Model choice & consistency
+
+- **Model**: I use a **Random Forest Regressor** as the main model because it handles non‑linear relationships, interactions, and mixed‑scale features well with relatively low tuning effort.
+- **Consistency fix**: After changing the target to log‑space, I **retrained and overwrote** the saved model so that training and inference always use the **same transformation pipeline**, avoiding issues like infinities or mis‑scaled predictions.
+
+### How you might summarize in 2–3 sentences
+
+> I engineered ratio features and used median imputation, standardization, and one‑hot encoding to build a clean feature space. Because house prices are highly skewed, I trained the Random Forest on log‑transformed prices and invert the transform at inference, which gives smoother and more realistic predictions. I also restricted user input sliders to the 5th–95th percentiles of the data so the model is queried in regions it has actually learned, keeping predictions stable and interpretable.
+
+eature engineering & preprocessing
+Feature engineering
+I created ratio features like bedrooms_per_household, population_per_household, and rooms_per_household to better capture density and living conditions than raw counts.
+Numeric preprocessing
+I used median imputation for missing numeric values and StandardScaler to normalize features before training, which stabilizes tree splits and distance-based behavior.
+Categorical encoding
+I used one‑hot encoding for ocean_proximity, and I saved the category set so inference uses the exact same encoding as training.
+2. Target transformation (key improvement)
+Problem: House prices are right‑skewed with a long tail, so training directly on raw prices can give unstable predictions and overemphasize extreme values.
+Solution: I trained the model on log‑transformed prices:
+During training: 
+y
+train
+′
+=
+log
+⁡
+(
+1
++
+price
+)
+y 
+train
+′
+​
+ =log(1+price)
+At prediction time: I invert it with 
+y
+^
+=
+exp
+⁡
+(
+y
+pred
+′
+)
+−
+1
+y
+^
+​
+ =exp(y 
+pred
+′
+​
+ )−1
+Benefit: This makes the loss landscape smoother, reduces the impact of outliers, and usually yields more realistic, better‑calibrated predictions, especially at higher prices.
+3. Robust, realistic inputs for users
+Problem: Letting users pick extreme min/max values leads to scenarios far outside the training distribution, which produce noisy or unrealistic predictions.
+Solution: I constrained the UI input ranges to the 5th–95th percentiles of each feature in the training data (instead of absolute min/max).
+Benefit: Users mostly explore plausible combinations the model has actually seen, so predictions are more stable and “user‑tested” prices feel sensible.
+4. Model choice & consistency
+Model: I use a Random Forest Regressor as the main model because it handles non‑linear relationships, interactions, and mixed‑scale features well with relatively low tuning effort.
+Consistency fix: After changing the target to log‑space, I retrained and overwrote the saved model so that training and inference always use the same transformation pipeline, avoiding issues like infinities or mis‑scaled predictions.
