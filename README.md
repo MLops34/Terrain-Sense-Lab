@@ -118,7 +118,7 @@ House_Price_Prediction/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/nsrawat0333/House_Price_Prediction.git
+git clone [https://github.com/MLops/House_Price_Prediction.git](https://github.com/MLops34/Terrain-Sense-Lab)
 cd House_Price_Prediction
 ```
 
